@@ -1,11 +1,10 @@
 .{
-    .name = "zig-dis-x86_64",
-    .version = "0.0.1",
+    .name = "X64EZ",
+    .version = "0.1.0",
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "LICENSE",
-        "README.md",
         "src",
     },
 }
