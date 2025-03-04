@@ -790,10 +790,19 @@ pub const Instruction = struct {
 
     pub fn new(prefix: Prefix, mnemonic: Mnemonic, ops: []const Operand) error{BadEncoding}!Instruction {
         const encoding = Encoding.findByMnemonic(prefix, mnemonic, ops) orelse {
-            log.err("no encoding found for: {s} {s} {s} {s} {s} {s}{s}", .{ @tagName(prefix), @tagName(mnemonic), @tagName(if (ops.len > 0) Op.fromOperand(ops[0]) else .none), @tagName(if (ops.len > 1) Op.fromOperand(ops[1]) else .none), @tagName(if (ops.len > 2) Op.fromOperand(ops[2]) else .none), @tagName(if (ops.len > 3) Op.fromOperand(ops[3]) else .none), if (ops.len > 3) " ...?" else "" });
+            if (@inComptime()) {
+                @compileLog("no encoding found for: ", prefix, mnemonic, ops);
+            } else {
+                log.err("no encoding found for: {s} {s} {s} {s} {s} {s}{s}", .{ @tagName(prefix), @tagName(mnemonic), @tagName(if (ops.len > 0) Op.fromOperand(ops[0]) else .none), @tagName(if (ops.len > 1) Op.fromOperand(ops[1]) else .none), @tagName(if (ops.len > 2) Op.fromOperand(ops[2]) else .none), @tagName(if (ops.len > 3) Op.fromOperand(ops[3]) else .none), if (ops.len > 3) " ...?" else "" });
+            }
             return error.BadEncoding;
         };
-        log.debug("selected encoding: {}", .{encoding});
+
+        if (@inComptime()) {
+            // @compileLog("selected encoding", .{encoding});
+        } else {
+            log.debug("selected encoding: {}", .{encoding});
+        }
 
         var inst = Instruction{
             .prefix = prefix,
@@ -4955,13 +4964,23 @@ pub const DisassemblerOptions = struct {
     sentinel: ?Mnemonic = null,
 
     pub const DisplayFlags = packed struct {
+        function_address: bool = true,
         address: bool = false,
         bytes: bool = false,
         x64_intel_syntax: bool = true,
     };
 };
 
-pub fn disas(memory: []u8, opts: DisassemblerOptions, writer: anytype) anyerror!void {
+fn showAddress(ptr: [*]const u8, opts: *const DisassemblerOptions, writer: anytype) !void {
+    if (opts.display.function_address) {
+        switch (opts.address_style) {
+            .hex => try writer.print("[{x:0<16}]:", .{@intFromPtr(ptr)}),
+            .dec => try writer.print("[{d: <16}]:", .{@intFromPtr(ptr)}),
+        }
+    }
+}
+
+pub fn disas(memory: []const u8, opts: DisassemblerOptions, writer: anytype) !void {
     var disassembler = Disassembler.init(memory);
     var lastPos = disassembler.pos;
 
@@ -4970,7 +4989,11 @@ pub fn disas(memory: []u8, opts: DisassemblerOptions, writer: anytype) anyerror!
     var options = opts;
 
     if (!(options.display.address or options.display.bytes or options.display.x64_intel_syntax)) {
-        log.warn("no display options enabled, defaulting to x64_intel_syntax", .{});
+        if (@inComptime()) {
+            @compileLog("no display options enabled, defaulting to x64_intel_syntax");
+        } else {
+            log.warn("no display options enabled, defaulting to x64_intel_syntax", .{});
+        }
         options.display.x64_intel_syntax = true;
     }
 
@@ -4978,26 +5001,34 @@ pub fn disas(memory: []u8, opts: DisassemblerOptions, writer: anytype) anyerror!
     const justBytes = !(options.display.address or options.display.x64_intel_syntax);
     const justAddress = !(options.display.bytes or options.display.x64_intel_syntax);
 
+    
+
     if (options.display.address) {
         if (justAddress) {
-            try writer.writeAll("  ╿");
+            try writer.writeAll("  ╿ ");
+            try showAddress(memory.ptr, &options, writer);
         } else {
-            try writer.writeAll("                    ╿");
+            try writer.writeAll("                    ╿ ");
+            try showAddress(memory.ptr, &options, writer);
         }
     }
     if (options.display.bytes) {
         if (justBytes) {
-            try writer.writeAll("  ╿");
+            try writer.writeAll("  ╿ ");
+            try showAddress(memory.ptr, &options, writer);
         } else if (options.display.x64_intel_syntax) {
             try writer.writeAll("                                    ╿");
         }
     }
-    if (justSyntax) try writer.writeAll("  ╿");
+    if (justSyntax) {
+        try writer.writeAll("  ╿ ");
+        try showAddress(memory.ptr, &options, writer);
+    }
 
     try writer.writeAll("\n");
 
     if (options.display.address) {
-        if (justAddress) try writer.writeAll("  │");
+        if (justAddress) try writer.writeAll("  ");
         try writer.writeAll("  address");
         if (!justAddress) try writer.writeAll("           │");
     }
