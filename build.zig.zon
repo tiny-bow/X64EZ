@@ -1,5 +1,5 @@
 .{
-    .name = "X64EZ",
+    .name = "r64",
     .version = "0.1.0",
     .paths = .{
         "build.zig",
